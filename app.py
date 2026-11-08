@@ -25,7 +25,7 @@ BRAND_DIR = ROOT / "品牌"
 STOCK_FILE = ROOT / "補充" / "SHOPPEE STOCK.xlsx"
 LOCAL_DB = ROOT / "local_dev.sqlite"
 
-st.set_page_config(page_title="京鴻 ERP 銷售分析", page_icon="👟", layout="wide")
+st.set_page_config(page_title="你我商行_銷售分析", page_icon="👟", layout="wide")
 
 
 # ---------------------------------------------------------------------------
@@ -219,14 +219,13 @@ def page_import(url: str):
 
 
 # ---------------------------------------------------------------------------
-# 頁面：商品主檔資料庫管理 (product_catalog)
+# 商品主檔管理區塊（併入「🛠️ 資料維護」頁籤）
 # ---------------------------------------------------------------------------
 
-def page_catalog(url: str):
-    st.header("📦 商品主檔資料庫管理")
+def _render_catalog_section(url: str, engine):
+    st.subheader("📦 商品主檔資料庫管理")
     st.caption("基於 `SHOPPEE STOCK.xlsx` 建立之商品主檔資料庫（`product_catalog`），提供由商品 ID 搜尋商品名稱與品牌，支援單筆新增、批次新增與整批覆蓋，並自動排除重複 ID。")
 
-    engine = get_engine(url)
     cat_df = _load_catalog_df(url)
     c1, c2 = st.columns(2)
     c1.metric("目前主檔總品項數（不重複 ID）", f"{len(cat_df):,}")
@@ -240,7 +239,6 @@ def page_catalog(url: str):
 
     # --- Tab 1：逐一新增 ---
     with tab_single:
-        st.subheader("單筆新增或更新商品")
         known_brands = sorted(set(NAME_KEYWORDS.keys()) | set(cat_df["brand"].unique().tolist()))
         with st.form("single_add_form", clear_on_submit=False):
             col1, col2 = st.columns([1, 2])
@@ -278,7 +276,6 @@ def page_catalog(url: str):
 
     # --- Tab 2：批次匯入（新增 / 覆蓋） ---
     with tab_batch:
-        st.subheader("由 Excel 批次匯入商品主檔")
         st.caption("上傳格式與 `SHOPPEE STOCK.xlsx` 相同（第 1 欄：主商品貨號、第 2 欄：商品名稱）。系統會先自動排除檔案內重複的商品 ID。")
 
         mode_label = st.radio(
@@ -337,7 +334,6 @@ def page_catalog(url: str):
 
     # --- Tab 3：搜尋與管理 ---
     with tab_browse:
-        st.subheader("搜尋與檢視商品主檔")
         s1, s2 = st.columns([2, 1])
         kw = s1.text_input("搜尋商品 ID 或商品名稱關鍵字", key="cat_search_kw")
         b_list = ["全部品牌"] + sorted(cat_df["brand"].unique().tolist()) if not cat_df.empty else ["全部品牌"]
@@ -508,26 +504,30 @@ def page_report(url: str):
 def page_admin(url: str):
     st.header("🛠️ 資料維護")
     engine = get_engine(url)
-    st.caption("大量修改請直接使用 Supabase Table Editor；此處提供銷售批次與未分類品牌維護功能。")
+    st.caption("管理商品主檔資料庫（新增品項、批次匯入）、銷售匯入批次與未分類品牌修正。")
 
-    st.subheader("匯入批次（依銷售日期）")
+    _render_catalog_section(url, engine)
+    st.divider()
+
+    st.subheader("🗂️ 銷售匯入批次（依銷售日期）")
     batches = db.import_batches(engine)
     if batches.empty:
-        st.info("資料庫目前沒有資料。")
-        return
-    st.dataframe(batches.rename(columns={"day": "銷售日期", "item_rows": "明細筆數", "sku_count": "型號數",
-                                         "qty": "件數", "revenue": "銷售額", "imported_at": "最後寫入"}),
-                 hide_index=True, width="stretch")
-    with st.form("del_form"):
-        d = st.selectbox("刪除指定日期之全部資料", batches["day"].tolist())
-        confirm = st.checkbox("我確認要刪除（無法復原）")
-        if st.form_submit_button("🗑️ 刪除", type="secondary") and confirm:
-            n = db.delete_date(engine, d)
-            clear_cache()
-            st.success(f"已刪除 {d} 共 {n} 筆。")
-            st.rerun()
+        st.info("資料庫目前沒有銷售明細資料。")
+    else:
+        st.dataframe(batches.rename(columns={"day": "銷售日期", "item_rows": "明細筆數", "sku_count": "型號數",
+                                             "qty": "件數", "revenue": "銷售額", "imported_at": "最後寫入"}),
+                     hide_index=True, width="stretch")
+        with st.form("del_form"):
+            d = st.selectbox("刪除指定日期之全部資料", batches["day"].tolist())
+            confirm = st.checkbox("我確認要刪除（無法復原）")
+            if st.form_submit_button("🗑️ 刪除", type="secondary") and confirm:
+                n = db.delete_date(engine, d)
+                clear_cache()
+                st.success(f"已刪除 {d} 共 {n} 筆。")
+                st.rerun()
 
-    st.subheader(f"品牌修正（{UNCLASSIFIED}）")
+    st.divider()
+    st.subheader(f"🏷️ 品牌修正（{UNCLASSIFIED}）")
     matcher = get_matcher(url)
     unc = db.distinct_skus_by_brand(engine, UNCLASSIFIED)
     if unc.empty:
@@ -576,7 +576,7 @@ def main():
         return
     url, is_local = _database_url()
     st.sidebar.title("👟 京鴻 ERP 銷售分析")
-    page = st.sidebar.radio("功能", ["📊 營運報表", "📥 匯入資料", "📦 商品主檔", "🛠️ 資料維護"])
+    page = st.sidebar.radio("功能", ["📊 營運報表", "📥 匯入資料", "🛠️ 資料維護"])
     if is_local:
         st.sidebar.warning("未設定 DATABASE_URL，目前使用本機 SQLite（僅供測試）。")
     st.sidebar.divider()
@@ -588,8 +588,6 @@ def main():
 
     if page == "📥 匯入資料":
         page_import(url)
-    elif page == "📦 商品主檔":
-        page_catalog(url)
     elif page == "🛠️ 資料維護":
         page_admin(url)
     else:
