@@ -1,0 +1,10 @@
+.streamlit/secrets.toml
+local_dev.sqlite
+__pycache__/
+*.pyc
+.venv/
+~$*.xlsx
+# 真實銷售資料不建議簽入
+Sample/
+補充/
+
