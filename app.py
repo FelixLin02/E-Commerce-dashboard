@@ -1,4 +1,4 @@
-"""京鴻 ERP 運動鞋服銷售數據分析與樞紐報表系統（Streamlit 前端）。
+"""你我商行 ERP 運動鞋服銷售數據分析與樞紐報表系統（Streamlit 前端）。
 
 執行：streamlit run app.py
 資料庫連線：Streamlit Secrets 之 DATABASE_URL（Supabase Pooler 連線字串）。
@@ -148,7 +148,7 @@ def sort_sizes(df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def page_import(url: str):
-    st.header("📥 京鴻 ERP 銷售檔匯入")
+    st.header("📥 你我商行 銷售檔匯入")
     st.caption("上傳 ERP「商品銷售總表列印」匯出之 Excel（.xls / .xlsx），系統自動清洗跨頁表頭、透過商品主檔資料庫判定品牌與名稱，並將 17 欄尺寸轉置為明細。")
 
     files = st.file_uploader("拖曳或選擇檔案（可多選）", type=["xls", "xlsx"], accept_multiple_files=True)
@@ -420,27 +420,46 @@ def page_report(url: str):
     # --- 品牌樞紐 ---
     st.subheader("🏷️ 品牌樞紐分析")
     bdf = q_brand(url, s, e)
-    col_a, col_b = st.columns([3, 2])
-    with col_a:
-        show = bdf.copy()
-        show["營收佔比"] = show["revenue"] / show["revenue"].sum()
-        show["件數佔比"] = show["qty"] / show["qty"].sum()
-        show.insert(0, "排名", range(1, len(show) + 1))
-        st.dataframe(
-            show.rename(columns={"brand": "品牌", "qty": "銷售件數", "revenue": "銷售額", "sku_count": "品項數"}),
-            hide_index=True, width="stretch",
-            column_config={
-                "銷售額": st.column_config.NumberColumn(format="$%d"),
-                "營收佔比": st.column_config.ProgressColumn(format="percent", min_value=0, max_value=1),
-                "件數佔比": st.column_config.NumberColumn(format="percent"),
-            },
+    show = bdf.copy()
+    show["營收佔比"] = show["revenue"] / show["revenue"].sum()
+    show["件數佔比"] = show["qty"] / show["qty"].sum()
+    show.insert(0, "排名", range(1, len(show) + 1))
+    st.dataframe(
+        show.rename(columns={"brand": "品牌", "qty": "銷售件數", "revenue": "銷售額", "sku_count": "品項數"}),
+        hide_index=True, width="stretch",
+        column_config={
+            "銷售額": st.column_config.NumberColumn(format="$%d"),
+            "營收佔比": st.column_config.ProgressColumn(format="percent", min_value=0, max_value=1),
+            "件數佔比": st.column_config.NumberColumn(format="percent"),
+        },
+    )
+
+    metric = st.radio("圖表指標", ["銷售額", "銷售件數"], horizontal=True, key="pie_metric")
+    val_col = "revenue" if metric == "銷售額" else "qty"
+    col_pie, col_bar = st.columns(2)
+    with col_pie:
+        fig_pie = px.pie(bdf, names="brand", values=val_col, hole=0.45, title=f"各品牌{metric}佔比")
+        fig_pie.update_traces(textposition="inside", textinfo="percent+label")
+        fig_pie.update_layout(height=380, margin=dict(t=40, b=10), showlegend=False)
+        st.plotly_chart(fig_pie, width="stretch")
+    with col_bar:
+        bar_df = bdf.sort_values(val_col, ascending=True)
+        fig_bar = px.bar(
+            bar_df,
+            x=val_col,
+            y="brand",
+            orientation="h",
+            text=val_col,
+            labels={"brand": "品牌", "revenue": "銷售額", "qty": "銷售件數"},
+            title=f"各品牌{metric}排行",
         )
-    with col_b:
-        metric = st.radio("圓餅圖指標", ["銷售額", "銷售件數"], horizontal=True, key="pie_metric")
-        fig = px.pie(bdf, names="brand", values="revenue" if metric == "銷售額" else "qty", hole=0.45)
-        fig.update_traces(textposition="inside", textinfo="percent+label")
-        fig.update_layout(height=380, margin=dict(t=10, b=10), showlegend=False)
-        st.plotly_chart(fig, width="stretch")
+        fig_bar.update_traces(
+            texttemplate="$%{text:,.0f}" if metric == "銷售額" else "%{text:,.0f}",
+            textposition="outside",
+            cliponaxis=False,
+        )
+        fig_bar.update_layout(height=380, margin=dict(t=40, b=10, r=40), yaxis_title=None)
+        st.plotly_chart(fig_bar, width="stretch")
 
     # --- 熱銷排行 ---
     st.subheader("🔥 熱門商品銷售排行")
@@ -575,7 +594,7 @@ def main():
     if not check_password():
         return
     url, is_local = _database_url()
-    st.sidebar.title("👟 京鴻 ERP 銷售分析")
+    st.sidebar.title("👟 你我商行_銷售分析")
     page = st.sidebar.radio("功能", ["📊 營運報表", "📥 匯入資料", "🛠️ 資料維護"])
     if is_local:
         st.sidebar.warning("未設定 DATABASE_URL，目前使用本機 SQLite（僅供測試）。")
